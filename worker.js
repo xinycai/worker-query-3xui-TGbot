@@ -52,6 +52,7 @@ async function setBotCommands(apiUrl) {
         const commands = [
             {command: "/start", description: "召唤机器人"},
             {command: "/status", description: "查询流量"},
+            {command: "/query", description: "根据ID查询流量"},
             {command: "/id", description: "查询ID"},
             {command: "/help", description: "召唤管理员"},
         ];
@@ -86,21 +87,49 @@ async function handleWebhook(request, apiUrl) {
         }
 
         if (update.message.text) {
-            if (update.message.text === '/start') {
-                await sendMessageWithButtons(
-                    update.message.chat.id,
-                    '欢迎使用机器人！请选择你要使用的功能：',
-                    apiUrl
-                );
+            const text = update.message.text;
+            const chatId = update.message.chat.id;
+
+            if (text === '/start') {
+                await sendMessageWithButtons(chatId, '欢迎使用机器人！请选择你要使用的功能：', apiUrl);
             } else if (update.message.text === '/status') {
-                await handleTrafficRequest(update.message.chat.id, apiUrl);
+                await handleTrafficRequest(chatId, apiUrl);
             } else if (update.message.text === '/id') {
-                await getUserId(update.message.chat.id, apiUrl);
+                await getUserId(chatId, apiUrl);
             } else if (update.message.text === '/help') {
-                await sendMessage(update.message.chat.id, "请与管理员直接联系：" + TG_NAME, apiUrl)
+                await sendMessage(chatId, "请与管理员直接联系：" + TG_NAME, apiUrl)
+            } else if (update.message.text === '/query') {
+                await sendMessage(chatId, "用法示例：\n/query 5220311563" + TG_NAME, apiUrl)
+            } else if (text === '/status' || text.startsWith('/query')) {
+                const queryParam = text.startsWith('/query')
+                    ? text.split(' ')[1] // 提取查询参数
+                    : null;
+                await handleTrafficRequest(chatId, apiUrl, queryParam);
             } else {
-                await sendMessageWithButtons(update.message.chat.id, "请选择你要使用的功能：", apiUrl)
+                await sendMessageWithButtons(chatId, "请选择你要使用的功能：", apiUrl)
             }
+        }
+        if (update.message.text) {
+            const text = update.message.text;
+            const chatId = update.message.chat.id;
+
+            if (text === '/start') {
+                await sendMessageWithButtons(chatId, '欢迎使用机器人！请选择你要使用的功能：', apiUrl);
+            } else if (text === '/status' || text.startsWith('/query')) {
+                // 统一处理流量请求
+                const queryParam = text.startsWith('/query')
+                    ? text.split(' ')[1] // 提取查询参数
+                    : null;
+
+                await handleTrafficRequest(chatId, apiUrl, queryParam);
+            } else if (text === '/id') {
+                await getUserId(chatId, apiUrl);
+            } else if (text === '/help') {
+                await sendMessage(chatId, "请与管理员直接联系：" + TG_NAME, apiUrl);
+            } else {
+                await sendMessageWithButtons(chatId, "请选择你要使用的功能：", apiUrl);
+            }
+
         }
 
         return new Response('OK');
@@ -131,7 +160,7 @@ async function handleCallbackQuery(callbackQuery, apiUrl) {
 }
 
 // 流量请求处理
-async function handleTrafficRequest(chatId, apiUrl) {
+async function handleTrafficRequest(chatId, apiUrl, query = chatId) {
     try {
         const cookie = await getAuthCookie();
         if (!cookie) {
@@ -139,7 +168,9 @@ async function handleTrafficRequest(chatId, apiUrl) {
             return;
         }
 
-        const trafficData = await getClientTraffic(cookie, chatId);
+        const searchKey = typeof query === 'string' ? query : chatId;
+
+        const trafficData = await getClientTraffic(cookie, searchKey);
         if (!trafficData) {
             await sendMessage(chatId, '📡 未获取到流量数据，请联系管理员', apiUrl);
             return;
@@ -148,7 +179,7 @@ async function handleTrafficRequest(chatId, apiUrl) {
         const onlineStatus = await checkOnlineStatus(cookie, trafficData.email);
         const message = formatTrafficMessage({...trafficData, ...onlineStatus});
         await sendMessage(chatId, message, apiUrl);
-        await sendMessageWithButtons(chatId, "请选择你要使用的功能：", apiUrl)
+        await sendMessageWithButtons(chatId, "请选择你要使用的功能：", apiUrl);
     } catch (error) {
         console.error('流量请求处理失败:', error);
         await sendMessage(chatId, '❌ 流量查询失败，请稍后重试', apiUrl);
